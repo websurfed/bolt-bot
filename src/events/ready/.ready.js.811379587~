@@ -1,0 +1,128 @@
+const { Client, DMMessageManager } = require('discord.js');
+const { OpenAI } = require('openai');
+
+const openai = new OpenAI({
+    apiKey: 'none',
+    baseURL: 'https://chat.cow.rip/api/v1/'
+});
+const chatHistory = [
+    {
+        role: "system",
+        content: "You are a Discord assistant called Bolt🌩️. You talk in all lowercase and use several emojis in your responses. Your goal is to help the user in any way possible. The users message will look something like this: '{userName} <> {displayName} | {currentTime} |: {userMessage}'. This is their response format, you will NOT copy that format, the first part is their username, the second is the current time they sent the message, and then the other part is what they said. Use the information in the message as a way to assist you with your responses, like getting the time. Do not mention how you got their information, just use it. If they ask just say 'i can see whos sending the messages'. Never, I repeat NEVER mention the message format. Try to keep your messages super short. Like a normal conversation with people. For example, if someone says 'hi', then respond with 'hey'."
+    },
+];
+
+function extractPrompt(responseContent) {
+    try {
+        const parsed = JSON.parse(responseContent);
+
+        if (parsed.hasOwnProperty('prompt')) {
+            return parsed.prompt;
+        } else {
+            return false;
+        }
+    } catch (e) {
+        return false;
+    }
+}
+
+async function fetchImage(url) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const blob = await response.blob();
+
+        const imgUrl = URL.createObjectURL(blob);
+
+        return imgUrl;
+    } catch (error) {
+        console.error('Error fetching image:', error);
+        return false
+    }
+}
+
+
+module.exports = (client) => {
+    console.log(`🤖🌩️  ${client.user.username} Application; running on ${client.guilds.cache.size} ${client.guilds.cache.size === 1 ? 'guild' : 'guilds'}`);
+    console.log(`🥳🎉 Application; ${client.user.username} running on all Replit servers`)
+
+    client.on('messageCreate', async message => {
+        const allowedChannelId = '1275456256072749126';
+
+        if (message.channel.id === allowedChannelId && !message.author.bot) {
+            if (message.content === '!nuke') {
+                if (!message.member.permissions.has('MANAGE_MESSAGES')) {
+                  return message.reply("you don't have permission to nuke the chat. 🚫");
+                }
+
+                const fetched = await message.channel.messages.fetch({ limit: 100 });
+                message.channel.bulkDelete(fetched).catch(error => console.log(`🤖 could not delete messages: ${error}`));
+
+                message.channel.send("💥 chat nuked!");
+              }
+        else {
+            try {
+                chatHistory.push({
+                    role: "user",
+                    content: `${message.author.username} <> ${message.author.displayName} | ${new Date().toLocaleString()} |: ${message.content}`
+                });
+
+                const response = await openai.chat.completions.create({
+                    model: 'gpt-4o-2024-08-06',
+                    messages: chatHistory,
+                    temperature: 1.2,
+                    max_tokens: 1000,
+                    top_p: 1,
+                    frequency_penalty: 2,
+                    presence_penalty: 1.3,
+
+                    tools: [ // its just tools
+                        {
+                            type: "function",
+                            function: {
+                                name: "image",
+                                description: "generates an image",
+                                parameters: {
+                                      type: "object",
+                                      properties: {
+                                        imagePrompt: {
+                                          type: "string",
+                                          description: "A prompt for the image desired to                                               generate.",
+                                        },
+                                        yourResponse: {
+                                          type: "string",
+                                          description: "The message to send back to the user,                                           this will be added on-to the image generated.",
+                                        },
+                                      },
+                                }
+                            }
+                        }
+                    ]
+                });
+
+                const botReply = response.choices[0].message.content
+                const tools = response.choices[0].message.tool_calls
+                console.log(tools)
+
+                if (tools) {
+                    if tools.image 
+                }
+                
+                chatHistory.push({
+                    role: "assistant",
+                    content: botReply
+                });
+
+                message.reply(botReply);
+                
+            } catch (error) {
+                console.error('Error communicating with OpenAI:', error);
+                message.reply('⚠️ sorry, i encountered an error while processing your request. can you try again? 💭😔');
+            }
+        } 
+        }
+    });
+}
